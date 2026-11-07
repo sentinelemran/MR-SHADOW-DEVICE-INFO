@@ -47,6 +47,29 @@ const detail = (j, t) => {
     .join("\n");
 };
 
+const statsText = (t, d) => {
+  const S = t.sl;
+  const L = t.lbl;
+  return [
+    S.title,
+    "",
+    `${S.clients}: ${d.clients}`,
+    `${S.jobs}: ${d.jobs} (${S.today} ${d.today}, ${S.month} ${d.month})`,
+    "",
+    `${t.st.pending}: ${d.s.pending}`,
+    `${t.st.in_progress}: ${d.s.in_progress}`,
+    `${t.st.done}: ${d.s.done}`,
+    `${t.st.cancelled}: ${d.s.cancelled}`,
+    "",
+    S.money,
+    `${L.total}: ${money(d.total)} | ${L.paid}: ${money(d.paid)} | ${L.due}: ${money(round2(d.total - d.paid))}`,
+    `${S.monthJobs}: ${L.total} ${money(d.mTotal)} | ${L.paid} ${money(d.mPaid)}`,
+    "",
+    `${S.topDue}:`,
+    ...(d.top.length ? d.top.map((j) => jobLine(j, t)) : [S.none]),
+  ].join("\n");
+};
+
 // ---------- Messages (Bengali / English) ----------
 const T = {
   bn: {
@@ -64,6 +87,8 @@ const T = {
 /job_pay কাজ# | টাকা
 /job_status কাজ# | pending/progress/done/cancel
 /job_done কাজ#
+
+📊 /stats
 
 🌐 /lang bn অথবা /lang en
 
@@ -109,6 +134,17 @@ const T = {
       due: "বাকি",
       notes: "নোট",
     },
+    sl: {
+      title: "📊 পরিসংখ্যান",
+      clients: "👥 ক্লায়েন্ট",
+      jobs: "🔧 মোট কাজ",
+      today: "আজ",
+      month: "এই মাসে",
+      money: "💰 টাকা (বাতিল বাদে)",
+      monthJobs: "এই মাসের কাজ",
+      topDue: "সবচেয়ে বেশি বাকি",
+      none: "নেই",
+    },
   },
   en: {
     help: `MR-SHADOW-DEVICE-INFO — Admin panel
@@ -125,6 +161,8 @@ const T = {
 /job_pay job# | amount
 /job_status job# | pending/progress/done/cancel
 /job_done job#
+
+📊 /stats
 
 🌐 /lang bn or /lang en
 
@@ -169,6 +207,17 @@ Use - for unknown fields. IMEI and notes can be left out.`,
       due: "Due",
       notes: "Notes",
     },
+    sl: {
+      title: "📊 Statistics",
+      clients: "👥 Clients",
+      jobs: "🔧 Total jobs",
+      today: "today",
+      month: "this month",
+      money: "💰 Money (excluding cancelled)",
+      monthJobs: "This month's jobs",
+      topDue: "Highest dues",
+      none: "none",
+    },
   },
 };
 
@@ -199,6 +248,31 @@ async function db(env, path, init = {}) {
   if (!res.ok) throw new Error(`DB ${res.status}`);
   const body = await res.text();
   return body ? JSON.parse(body) : null;
+}
+
+async function dbCount(env, path) {
+  const key = env.SUPABASE_KEY;
+  const headers = { apikey: key, Prefer: "count=exact", Range: "0-0" };
+  if (key.startsWith("eyJ")) headers.Authorization = `Bearer ${key}`;
+  const base = env.SUPABASE_URL.replace(/\/$/, "");
+  const res = await fetch(`${base}/rest/v1/${path}`, { headers });
+  if (res.status === 416) return 0;
+  if (!res.ok) throw new Error(`DB ${res.status}`);
+  const total = Number((res.headers.get("content-range") || "").split("/")[1]);
+  return Number.isFinite(total) ? total : 0;
+}
+
+async function allJobs(env) {
+  const all = [];
+  for (let page = 0; page < 5; page++) {
+    const rows = await db(
+      env,
+      `jobs?select=status,total_amount,paid_amount,job_date&order=job_no.asc&limit=1000&offset=${page * 1000}`
+    );
+    all.push(...rows);
+    if (rows.length < 1000) break;
+  }
+  return all;
 }
 
 async function getLang(env) {
@@ -373,6 +447,41 @@ export default {
           if (n == null) { out = t.doneUsage; break; }
           const j = await setStatus(env, n, "done");
           out = j ? t.statusSet(j, t) : t.noJob;
+          break;
+        }
+
+        // ----- Stats -----
+        case "/stats": {
+          const [clients, jobs, top] = await Promise.all([
+            dbCount(env, "clients?select=id"),
+            allJobs(env),
+            db(env, `jobs?select=${JOB_SEL}&status=neq.cancelled&due_amount=gt.0&order=due_amount.desc&limit=5`),
+          ]);
+          const today = todayDhaka();
+          const month = today.slice(0, 7);
+          const d = {
+            clients, top, jobs: jobs.length,
+            s: { pending: 0, in_progress: 0, done: 0, cancelled: 0 },
+            today: 0, month: 0, total: 0, paid: 0, mTotal: 0, mPaid: 0,
+          };
+          for (const j of jobs) {
+            if (d.s[j.status] !== undefined) d.s[j.status]++;
+            if (j.job_date === today) d.today++;
+            const inMonth = j.job_date.startsWith(month);
+            if (inMonth) d.month++;
+            if (j.status === "cancelled") continue;
+            d.total += Number(j.total_amount);
+            d.paid += Number(j.paid_amount);
+            if (inMonth) {
+              d.mTotal += Number(j.total_amount);
+              d.mPaid += Number(j.paid_amount);
+            }
+          }
+          d.total = round2(d.total);
+          d.paid = round2(d.paid);
+          d.mTotal = round2(d.mTotal);
+          d.mPaid = round2(d.mPaid);
+          out = statsText(t, d);
           break;
         }
 
