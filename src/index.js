@@ -18,9 +18,15 @@ async function send(env, chatId, text) {
 
 export default {
   async fetch(request, env) {
-    if (request.method !== "POST") return new Response("OK");
+    // TEMPORARY CHECK: shows only whether each secret exists (never the value)
+    if (request.method !== "POST") {
+      return new Response(
+        `BOT_TOKEN: ${env.BOT_TOKEN ? "set" : "MISSING"}\n` +
+        `ADMIN_ID: ${env.ADMIN_ID ? "set" : "MISSING"}\n` +
+        `WEBHOOK_SECRET: ${env.WEBHOOK_SECRET ? "set" : "MISSING"}`
+      );
+    }
 
-    // Only accept requests that really come from Telegram
     if (request.headers.get("X-Telegram-Bot-Api-Secret-Token") !== env.WEBHOOK_SECRET) {
       return new Response("Forbidden", { status: 403 });
     }
@@ -29,7 +35,6 @@ export default {
     const msg = update.message;
     if (!msg || !msg.text) return new Response("OK");
 
-    // Admin only: silently ignore everyone else
     if (String(msg.from.id) !== String(env.ADMIN_ID)) return new Response("OK");
 
     const cmd = msg.text.trim().split(/\s+/)[0].split("@")[0].toLowerCase();
