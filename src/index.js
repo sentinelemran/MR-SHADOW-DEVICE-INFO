@@ -18,14 +18,7 @@ async function send(env, chatId, text) {
 
 export default {
   async fetch(request, env) {
-    // TEMPORARY CHECK: shows only whether each secret exists (never the value)
-    if (request.method !== "POST") {
-      return new Response(
-        `BOT_TOKEN: ${env.BOT_TOKEN ? "set" : "MISSING"}\n` +
-        `ADMIN_ID: ${env.ADMIN_ID ? "set" : "MISSING"}\n` +
-        `WEBHOOK_SECRET: ${env.WEBHOOK_SECRET ? "set" : "MISSING"}`
-      );
-    }
+    if (request.method !== "POST") return new Response("OK");
 
     if (request.headers.get("X-Telegram-Bot-Api-Secret-Token") !== env.WEBHOOK_SECRET) {
       return new Response("Forbidden", { status: 403 });
