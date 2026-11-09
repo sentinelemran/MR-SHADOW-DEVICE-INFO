@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Sample App 1 (placeholder)",
+    "description": "Replace this with a real app description.",
+    "category": "Root Tools",
+    "downloadUrl": "",
+    "websiteUrl": "",
+    "version": "",
+    "visible": true
+  },
+  {
+    "name": "Sample App 2 (placeholder)",
+    "description": "Replace this with a real app description.",
+    "category": "Utilities",
+    "downloadUrl": "",
+    "websiteUrl": "",
+    "version": "",
+    "visible": true
+  }
+]
